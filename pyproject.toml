@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=77"]  # PEP 639 license expression support
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scope-guard"
+version = "0.1.0"
+description = "Offline, auditable in-scope / out-of-scope decisions for bug bounty targets."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "David Nichols" }]
+keywords = [
+    "bug-bounty",
+    "security",
+    "scope",
+    "authorisation",
+    "reconnaissance",
+    "vulnerability-disclosure",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+
+# No runtime dependencies, by design. The core decision path uses only the
+# standard library, so there is nothing in the dependency tree that could
+# make a network request on your behalf.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Young-Syre/scope-guard"
+Source = "https://github.com/Young-Syre/scope-guard"
+Issues = "https://github.com/Young-Syre/scope-guard/issues"
+
+[project.scripts]
+scope-guard = "scope_guard.cli:run"
+
+[tool.setuptools]
+packages = ["scope_guard"]
+
+[tool.setuptools.package-data]
+scope_guard = ["py.typed"]

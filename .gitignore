@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Your own scope files and recon output do not belong in version control.
+# A scope file is an authorisation record for a specific engagement; the
+# examples/ directory is the only place scope files are tracked here.
+/scope.toml
+/*.scope.toml
+/targets.txt
+/verdicts.csv
