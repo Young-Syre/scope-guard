@@ -199,10 +199,16 @@ def _parse_host_or_ip(
     path: tuple[str, ...] | None = None
     notes: list[str] = []
 
-    slash = _first_path_slash(remainder)
-    if slash is not None:
-        raw_path = remainder[slash:]
-        remainder = remainder[:slash]
+    # urlsplit carves the authority, path, query and fragment apart the same
+    # way the scheme-ful branch does. Splitting on the first "/" by hand left
+    # the query glued to the last path segment, so `example.com/api?x=1` and
+    # `https://example.com/api?x=1` disagreed about the same target -- and the
+    # entry side already refuses a query outright, so keeping one here was not
+    # even self-consistent.
+    carved = urlsplit("//" + remainder)
+    remainder = carved.netloc
+    if carved.path:
+        raw_path = carved.path
         if "%2f" in raw_path.lower() or "%5c" in raw_path.lower():
             notes.append(
                 "path contains an encoded separator; it is compared as a literal "
@@ -232,11 +238,6 @@ def _parse_host_or_ip(
         path=path,
         notes=tuple(notes),
     )
-
-
-def _first_path_slash(text: str) -> int | None:
-    index = text.find("/")
-    return None if index == -1 else index
 
 
 def _split_port(authority: str) -> tuple[str, int | None]:

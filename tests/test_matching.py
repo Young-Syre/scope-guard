@@ -14,6 +14,8 @@ from scope_guard.normalise import normalise_host, normalise_path
 from scope_guard.rules import build_rule, intersects, subsumes, wildcard_matches
 from scope_guard.targets import parse_target
 
+from .helpers import HEADER
+
 
 def rule(rule_type: str, value: str, side: str = "in", index: int = 0, **extra):
     entry = {"type": rule_type, "value": value, **extra}
@@ -439,6 +441,46 @@ class TestRuleAlgebra(unittest.TestCase):
         )
 
 
+class TestCidrSpecificityAcrossFamilies(unittest.TestCase):
+    """Prefix lengths are not comparable between IPv4 and IPv6.
+
+    One target can carry an address in both families (an IPv4-mapped IPv6
+    literal, in either spelling), so the two scales meet in one comparison.
+    """
+
+    @staticmethod
+    def _score(value: str) -> int:
+        return rule("cidr", value).specificity()[0]
+
+    def test_a_v6_block_is_scored_by_the_addresses_it_covers(self):
+        # ::ffff:0:0/96 is the whole IPv4 space. Scoring the raw prefix length
+        # read it as four times more precise than a /24.
+        self.assertLess(self._score("::ffff:0:0/96"), self._score("192.0.2.0/24"))
+        self.assertEqual(self._score("::ffff:0:0/96"), self._score("0.0.0.0/0"))
+
+    def test_a_single_address_is_a_single_address_in_either_family(self):
+        self.assertEqual(self._score("192.0.2.1/32"), self._score("2001:db8::1/128"))
+
+    def test_tighter_still_beats_looser_within_a_family(self):
+        self.assertLess(self._score("192.0.2.0/24"), self._score("192.0.2.0/28"))
+        self.assertLess(self._score("2001:db8::/32"), self._score("2001:db8::/48"))
+
+    def test_an_excluded_v4_block_is_not_outranked_by_a_mapped_v6_block(self):
+        from scope_guard.decide import OUT_OF_SCOPE, decide
+        from scope_guard.scope import parse_scope
+
+        body = (
+            '[rules]\nexclusions_win = false\nunlisted_is = "unknown"\n'
+            '[[in_scope]]\ntype = "cidr"\nvalue = "::ffff:0:0/96"\n'
+            '[[out_of_scope]]\ntype = "cidr"\nvalue = "192.0.2.0/24"\n'
+        )
+        scope = parse_scope(HEADER + "\n" + body)
+        for raw in ("192.0.2.1", "::ffff:192.0.2.1"):
+            with self.subTest(raw=raw):
+                result = decide(scope, parse_target(raw))
+                self.assertEqual(result.verdict, OUT_OF_SCOPE)
+
+
 class TestTargetParsing(unittest.TestCase):
     def test_bare_host(self):
         parsed = parse_target("example.com")
@@ -471,6 +513,36 @@ class TestTargetParsing(unittest.TestCase):
 
     def test_encoded_separator_raises_a_note(self):
         self.assertTrue(any("encoded separator" in n for n in parse_target("example.com/a%2Fb").notes))
+
+    def test_a_query_or_fragment_is_carved_off_with_or_without_a_scheme(self):
+        # The schemeless form used to keep the query glued to the last path
+        # segment, so `example.com/api?x=1` and `https://example.com/api?x=1`
+        # disagreed about the same target.
+        for raw in (
+            "example.com/api/v1?x=1",
+            "example.com/api/v1#frag",
+            "example.com/api/v1?x=1#frag",
+            "https://example.com/api/v1?x=1",
+        ):
+            with self.subTest(raw=raw):
+                parsed = parse_target(raw)
+                self.assertEqual(parsed.host, "example.com")
+                self.assertEqual(parsed.path, ("api", "v1"))
+
+    def test_a_query_with_no_path_leaves_the_host_alone(self):
+        parsed = parse_target("example.com?x=1")
+        self.assertEqual((parsed.host, parsed.path), ("example.com", None))
+
+    def test_a_query_survives_a_port_and_an_ipv6_literal(self):
+        parsed = parse_target("example.com:8443/api?x=1")
+        self.assertEqual((parsed.host, parsed.port, parsed.path), ("example.com", 8443, ("api",)))
+        parsed = parse_target("[2001:db8::1]:8443/a/b?x=1")
+        self.assertEqual((parsed.host, parsed.port, parsed.path), ("2001:db8::1", 8443, ("a", "b")))
+
+    def test_an_encoded_separator_is_still_noted_behind_a_query(self):
+        self.assertTrue(
+            any("encoded separator" in n for n in parse_target("example.com/a%2Fb?x=1").notes)
+        )
 
     def test_empty_target_is_rejected(self):
         with self.assertRaises(TargetError):
