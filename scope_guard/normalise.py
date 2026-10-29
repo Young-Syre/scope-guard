@@ -8,6 +8,7 @@ verdict. The two public entry points are :func:`normalise_host` and
 
 from __future__ import annotations
 
+import re
 import ipaddress
 from urllib.parse import unquote
 
@@ -46,7 +47,12 @@ def normalise_host(host: str, *, context: str = "host") -> str:
     raw = host.strip()
     if raw.startswith("[") and raw.endswith("]"):
         raw = raw[1:-1]
-    if raw.endswith(".") and not raw.endswith(".."):
+    # One trailing root label separator, in any of the four forms IDNA treats
+    # as a dot. Stripping only U+002E here, before IDNA, meant the ideographic
+    # full stop survived the strip and was *then* mapped to a dot, so
+    # ``example.com。`` normalised to ``example.com.`` -- dot still attached,
+    # and it never matched ``example.com``.
+    if raw and raw[-1] in _ROOT_DOTS and (len(raw) < 2 or raw[-2] not in _ROOT_DOTS):
         raw = raw[:-1]
     if not raw:
         raise ScopeFileError(f"empty {context}")
@@ -74,18 +80,40 @@ def normalise_host(host: str, *, context: str = "host") -> str:
         raise ScopeFileError(f"{context} {host!r} is not a valid IDN: {exc}") from exc
 
 
+#: The characters IDNA treats as a label separator: ASCII full stop plus the
+#: ideographic, fullwidth and halfwidth forms.
+_ROOT_DOTS = ".\u3002\uff0e\uff61"
+
+#: A DNS label: letters, digits, hyphen, and the underscore that service
+#: records such as ``_dmarc`` and ``_acme-challenge`` use. A hyphen may not
+#: lead or trail.
+_LABEL_RE = re.compile(r"^[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?$")
+
+
 def _validate_ascii_host(lowered: str, original: str, context: str) -> None:
     """Reject ASCII hosts the IDNA codec would also have rejected.
 
     The IDNA codec is only exercised for non-ASCII hosts, so the same
-    structural rules are applied here by hand: no empty labels and no label
-    longer than 63 bytes.
+    structural rules are applied here by hand: no empty labels, no label
+    longer than 63 bytes, and nothing outside the letter-digit-hyphen set.
+
+    The check used to blocklist characters -- ``*``, ``/`` and ``\\`` -- which
+    left ``@``, ``?``, ``%``, ``:`` and a literal space through. Those were
+    accepted as *hostnames* and then reported out-of-scope, which fails closed
+    but silently; ``user@example.com`` is an authoring mistake and should say
+    so. An allowlist cannot have that shape of gap.
     """
     for label in lowered.split("."):
         if not label:
             raise ScopeFileError(f"{context} {original!r} has an empty label")
         if len(label) > 63:
             raise ScopeFileError(f"{context} {original!r} has a label over 63 bytes")
+        if not _LABEL_RE.match(label):
+            raise ScopeFileError(
+                f"{context} {original!r} has the label {label!r}, which is not a "
+                "hostname label: letters, digits, hyphen and underscore only, "
+                "and a hyphen may not lead or trail"
+            )
 
 
 def host_labels(host: str) -> tuple[str, ...]:

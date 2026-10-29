@@ -573,3 +573,58 @@ def load_tests(loader, tests, ignore):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHostnameValidation(unittest.TestCase):
+    """The host check allowlists rather than blocklists.
+
+    It used to reject `*`, `/` and `\\` by name, which left `@`, `?`, `%`, `:`
+    and a literal space through. Those were accepted as *hostnames* and then
+    reported out-of-scope -- fail-closed, but silently, when the real answer is
+    that the entry is an authoring mistake.
+    """
+
+    def test_a_host_that_is_not_a_hostname_is_rejected(self):
+        for value in (
+            "user@example.com",
+            "example.com?x=1",
+            "example.com#frag",
+            "example.com:80:90",
+            "example.com%2f",
+            "ex ample.com",
+            "-example.com",
+            "example-.com",
+            "exa mple.com",
+            "example..com",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ScopeFileError):
+                    normalise_host(value)
+
+    def test_real_hostnames_still_normalise(self):
+        cases = {
+            "example.com": "example.com",
+            "EXAMPLE.com": "example.com",
+            "sub.example.com": "sub.example.com",
+            "my-host.example.com": "my-host.example.com",
+            # Service labels: _dmarc and _acme-challenge are ordinary scope
+            # entries and start with an underscore.
+            "_dmarc.example.com": "_dmarc.example.com",
+            "_acme-challenge.example.com": "_acme-challenge.example.com",
+            "xn--exmple-cua.com": "xn--exmple-cua.com",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(normalise_host(value), expected)
+
+    def test_a_root_dot_is_stripped_in_every_form_idna_treats_as_one(self):
+        # The strip ran before IDNA and only handled U+002E, so the ideographic
+        # full stop survived it and was then mapped to a dot -- normalising
+        # `example.com。` to `example.com.`, which never matched `example.com`.
+        for separator in (".", "。", "．", "｡"):
+            with self.subTest(separator=separator):
+                self.assertEqual(normalise_host(f"example.com{separator}"), "example.com")
+
+    def test_two_trailing_dots_are_still_an_error(self):
+        with self.assertRaises(ScopeFileError):
+            normalise_host("example.com..")
