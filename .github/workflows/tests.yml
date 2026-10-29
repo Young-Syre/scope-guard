@@ -1,0 +1,61 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Both realistic example scope files lint clean
+        run: |
+          scope-guard lint examples/primacy-of-rules.toml
+          scope-guard lint examples/primacy-of-impact.toml
+
+      - name: The deliberately broken example fails lint
+        run: |
+          if scope-guard lint examples/broken-scope.toml; then
+            echo "expected lint to fail on examples/broken-scope.toml"
+            exit 1
+          fi
+
+      - name: The init scaffold parses and lints clean
+        run: |
+          scope-guard init /tmp/scope.toml
+          scope-guard lint /tmp/scope.toml
+
+      - name: Exit codes
+        run: |
+          set +e
+          scope-guard check api.meridianpay.example --scope examples/primacy-of-rules.toml --quiet
+          [ $? -eq 0 ] || { echo "expected 0 for an in-scope target"; exit 1; }
+          scope-guard check a.sandbox.meridianpay.example --scope examples/primacy-of-rules.toml --quiet
+          [ $? -eq 1 ] || { echo "expected 1 for an out-of-scope target"; exit 1; }
+          scope-guard check unlisted.invalid --scope examples/primacy-of-impact.toml --quiet
+          [ $? -eq 2 ] || { echo "expected 2 for an unknown target"; exit 1; }
+          scope-guard check example.com --scope /nonexistent.toml
+          [ $? -eq 3 ] || { echo "expected 3 for an unreadable scope file"; exit 1; }
