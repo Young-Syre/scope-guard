@@ -5,7 +5,14 @@ from __future__ import annotations
 import datetime
 import unittest
 
-from scope_guard.lint import CHECKS, ERROR, INFO, WARNING, lint_scope
+from scope_guard.lint import (
+    CHECKS,
+    DEFAULT_MAX_AGE_DAYS,
+    ERROR,
+    INFO,
+    WARNING,
+    lint_scope,
+)
 from scope_guard.scope import load_scope, parse_scope
 
 from .helpers import EXAMPLES, HEADER, TODAY
@@ -614,11 +621,45 @@ value = "api.example.com"
         self.assertFalse(result.ok(strict=True))
 
     def test_staleness_uses_todays_date_when_none_is_given(self):
-        header = '[program]\npolicy_url = "https://x.example/p"\nlast_verified = 2000-01-01\n'
+        # The old version of this test asserted SG006 fired for a date in 2000
+        # and then asserted that datetime.date.today() returns a date -- a
+        # tautology about the standard library. It passed whatever default the
+        # code used, including a date hardcoded to anything after 2000-04-01,
+        # so the behaviour its name claims was never checked.
+        #
+        # What makes it a real test is the boundary: a date exactly
+        # max_age_days old must not warn and one day older must, measured from
+        # the real today rather than from an injected one.
+        today = datetime.date.today()
+        fresh = today - datetime.timedelta(days=DEFAULT_MAX_AGE_DAYS)
+        stale = today - datetime.timedelta(days=DEFAULT_MAX_AGE_DAYS + 1)
+
+        def check(verified: datetime.date) -> set[str]:
+            header = (
+                '[program]\npolicy_url = "https://x.example/p"\n'
+                f"last_verified = {verified.isoformat()}\n"
+            )
+            return checks_in(lint_scope(parse_scope(header + "\n" + CLEAN)))
+
+        self.assertNotIn("SG006", check(fresh), "exactly at the limit is not stale")
+        self.assertIn("SG006", check(stale), "one day over the limit is stale")
+
+    def test_an_injected_today_is_used_instead_of_the_real_one(self):
+        header = '[program]\npolicy_url = "https://x.example/p"\nlast_verified = 2026-01-01\n'
         scope = parse_scope(header + "\n" + CLEAN)
-        result = lint_scope(scope)
+        fresh = lint_scope(scope, today=datetime.date(2026, 1, 2))
+        stale = lint_scope(
+            scope, today=datetime.date(2026, 1, 2) + datetime.timedelta(days=400)
+        )
+        self.assertNotIn("SG006", checks_in(fresh))
+        self.assertIn("SG006", checks_in(stale))
+
+    def test_a_future_date_is_an_error_not_a_warning(self):
+        header = '[program]\npolicy_url = "https://x.example/p"\nlast_verified = 2026-06-01\n'
+        scope = parse_scope(header + "\n" + CLEAN)
+        result = lint_scope(scope, today=datetime.date(2026, 1, 1))
         self.assertIn("SG006", checks_in(result))
-        self.assertIsInstance(datetime.date.today(), datetime.date)
+        self.assertGreaterEqual(result.errors, 1)
 
 
 if __name__ == "__main__":
