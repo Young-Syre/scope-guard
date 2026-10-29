@@ -146,6 +146,65 @@ def decide(scope: Scope, target: Target) -> Decision:
     if len(sides) == 1:
         side = next(iter(sides))
         if side == SIDE_IN:
+            # An in-scope verdict has to rest on something the target actually
+            # said. If every matching inclusion pinned a scheme or a port that
+            # the target left out, the entry was matched by relaxing its own
+            # constraint, and calling that authorised is the one mistake this
+            # tool exists to prevent.
+            inclusions = tuple(rule for rule in matched if rule.side == SIDE_IN)
+            unrelaxed = tuple(
+                rule for rule in inclusions if not rule.relaxed_for(target)
+            )
+            if unrelaxed and not any(rule in unrelaxed for rule in top):
+                # The most specific inclusions were all matched by relaxation,
+                # but a broader one covers the target as written. That broader
+                # entry is what authorises it, so it is what gets named -- and
+                # its severity ceiling is the one that applies, because a cap
+                # cannot be inherited from an entry that does not authorise.
+                deciding = _most_specific(unrelaxed)
+                trace.append(
+                    "the most specific inclusions were matched by relaxing a "
+                    "constraint the target did not state; the verdict falls to "
+                    "the most specific inclusion that covers it as written"
+                )
+                return Decision(
+                    target=target,
+                    verdict=IN_SCOPE,
+                    reason=_reason("included by", deciding),
+                    deciding=deciding,
+                    matched=matched,
+                    max_severity=_tightest_severity(deciding),
+                    notes=tuple(notes),
+                    trace=tuple(trace),
+                )
+            if not unrelaxed:
+                seen = {
+                    constraint
+                    for rule in inclusions
+                    for constraint in rule.relaxed_for(target)
+                }
+                # URL order, not alphabetical: "a scheme and port" reads.
+                relaxed = [name for name in ("scheme", "port") if name in seen]
+                joined = " and ".join(relaxed)
+                trace.append(
+                    f"every matching inclusion pinned a {joined} the target did "
+                    "not supply, so no entry authorises it as written"
+                )
+                return Decision(
+                    target=target,
+                    verdict=UNKNOWN,
+                    reason=(
+                        f"every matching in_scope entry pins a {joined} that the "
+                        "target does not state, so the match rests on relaxing "
+                        f"the entry's own constraint: "
+                        + "; ".join(rule.label for rule in top)
+                        + f". Re-check with an explicit {joined}."
+                    ),
+                    deciding=top,
+                    matched=matched,
+                    notes=tuple(notes),
+                    trace=tuple(trace),
+                )
             severity = _tightest_severity(top)
             return Decision(
                 target=target,
@@ -282,6 +341,15 @@ def _unevaluated_notes(scope: Scope, target: Target, matched: tuple[Rule, ...]) 
             notes.append(
                 "the target was given without a scheme, so scheme-constrained "
                 "entries were matched as if any scheme were acceptable"
+            )
+
+    if target.effective_port is None:
+        port_rules = [rule for rule in matched if rule.port is not None]
+        if port_rules:
+            notes.append(
+                "the target was given without a port, and without a scheme to "
+                "imply one, so port-constrained entries were matched as if any "
+                "port were acceptable"
             )
 
     return notes

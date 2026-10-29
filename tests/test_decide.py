@@ -326,8 +326,54 @@ value = "other.example.net/admin"
     def test_schemeless_target_reports_the_assumption(self):
         body = '[[in_scope]]\ntype = "url"\nvalue = "https://example.com/api"\n'
         result = decision(body, "example.com/api/v1")
-        self.assertEqual(result.verdict, IN_SCOPE)
         self.assertTrue(any("without a scheme" in note for note in result.notes))
+
+    def test_a_relaxed_scheme_is_not_an_authorisation(self):
+        # The entry says https. The target does not say. If it is reached over
+        # http it is not in scope, and a note on an IN-SCOPE verdict is not
+        # enough -- the exit code is the interface.
+        body = '[[in_scope]]\ntype = "url"\nvalue = "https://example.com/api"\n'
+        result = decision(body, "example.com/api/v1")
+        self.assertEqual(result.verdict, UNKNOWN)
+        self.assertIn("relaxing the entry's own constraint", result.reason)
+        self.assertIn("explicit scheme", result.reason)
+
+    def test_a_relaxed_port_is_not_an_authorisation(self):
+        body = '[[in_scope]]\ntype = "url"\nvalue = "https://example.com:8443/admin"\n'
+        result = decision(body, "example.com/admin")
+        self.assertEqual(result.verdict, UNKNOWN)
+        self.assertIn("scheme and port", result.reason)
+        self.assertTrue(any("without a port" in note for note in result.notes))
+
+    def test_stating_the_scheme_and_port_authorises(self):
+        body = '[[in_scope]]\ntype = "url"\nvalue = "https://example.com:8443/admin"\n'
+        self.assertEqual(
+            decision(body, "https://example.com:8443/admin").verdict, IN_SCOPE
+        )
+        # A scheme whose default port is the pinned one needs no explicit port.
+        body443 = '[[in_scope]]\ntype = "url"\nvalue = "https://example.com/api"\n'
+        self.assertEqual(
+            decision(body443, "https://example.com/api/v1").verdict, IN_SCOPE
+        )
+
+    def test_a_broader_entry_that_covers_the_target_still_authorises(self):
+        # The url entry is more specific but was matched by relaxation. The
+        # domain entry covers the target as written, so it decides -- and it is
+        # the entry named, because naming the one that does not authorise would
+        # read as though it did.
+        body = (
+            '[[in_scope]]\ntype = "domain"\nvalue = "example.com"\n'
+            '[[in_scope]]\ntype = "url"\nvalue = "https://example.com:8443/admin"\n'
+            'max_severity = "critical"\n'
+        )
+        result = decision(body, "example.com/admin")
+        self.assertEqual(result.verdict, IN_SCOPE)
+        self.assertIn("domain = 'example.com'", result.reason)
+        self.assertIsNone(
+            result.max_severity,
+            "a severity cap cannot be inherited from an entry that does not "
+            "authorise the target",
+        )
 
     def test_encoded_separator_note_is_carried_through(self):
         body = '[[in_scope]]\ntype = "domain"\nvalue = "example.com"\n'

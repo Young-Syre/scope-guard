@@ -202,8 +202,27 @@ class Rule:
             return True
         target_port = target.effective_port
         if target_port is None:
+            # The target named no port and no scheme to imply one, so this
+            # entry's port cannot be evaluated. Matching anyway keeps the
+            # entry in play, but the match is not evidence of authorisation:
+            # see relaxed_for, and the downgrade it drives in decide().
             return True
         return target_port == self.port
+
+    def relaxed_for(self, target: Target) -> tuple[str, ...]:
+        """Constraints this entry pins that the target did not supply.
+
+        A match that rests on one of these is not an authorisation. The entry
+        says https on port 8443; the target says neither; agreeing to call that
+        a match is a convenience for keeping the entry in play, not a finding
+        that the two refer to the same thing.
+        """
+        relaxed: list[str] = []
+        if self.scheme is not None and target.scheme is None:
+            relaxed.append("scheme")
+        if self.port is not None and target.effective_port is None:
+            relaxed.append("port")
+        return tuple(relaxed)
 
     def _path_matches(self, target: Target) -> bool:
         if self.path is None:
@@ -244,7 +263,17 @@ class Rule:
             return 3000 + 10 * 8
         if self.host_kind == _H_NET:
             assert self.network is not None
-            return 2000 + self.network.prefixlen
+            # Scored by how many addresses the entry covers, not by the raw
+            # prefix length: 96 and 24 are not comparable numbers across
+            # families. `::ffff:0:0/96` covers the whole IPv4 space, so reading
+            # it as more precise than `192.0.2.0/24` let a /96 inclusion
+            # outrank an explicit /24 exclusion of an IPv4-mapped target.
+            #
+            # host_bits is the log2 of the covered set, so inverting it puts
+            # both families on one scale and makes a /32 and a /128 equally
+            # precise, which they are -- each names exactly one address.
+            host_bits = self.network.max_prefixlen - self.network.prefixlen
+            return 2000 + (128 - host_bits)
         if self.host_kind == _H_WILDCARD:
             return 1000 + 10 * len(host_labels(self.wildcard_base or ""))
         if self.host_kind == _H_ID_EXACT:
