@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# DELIBERATELY WRONG. Do not copy any of this.
+#
+# Every lint check in scope-guard fires on this file. It exists so you can
+# see what each finding looks like before you meet it in a real scope file:
+#
+#     scope-guard lint examples/broken-scope.toml
+#
+# The mistakes, in the order lint reports them, are annotated inline.
+# ---------------------------------------------------------------------------
+
+[program]
+# SG009: no name, no platform, and no policy_url -- nobody can re-verify this
+#        file against the policy it supposedly came from.
+# SG006: last_verified is long past the default 90-day limit.
+last_verified = 2024-01-15
+
+[rules]
+exclusions_win = true
+unlisted_is = "out"
+
+[[in_scope]]
+type = "wildcard"
+value = "*.broken.example"
+# SG004: the apex broken.example is never listed on this side, so a check of
+#        broken.example itself falls through to unlisted_is.
+
+[[in_scope]]
+type = "domain"
+value = "app.broken.example"
+# SG003: already covered by *.broken.example above, and carries no
+#        max_severity or notes of its own, so it changes nothing.
+
+[[in_scope]]
+type = "cidr"
+value = "192.0.2.0/24"
+
+[[in_scope]]
+type = "ip"
+value = "192.0.2.10"
+# SG001: already inside the 192.0.2.0/24 entry above.
+
+[[in_scope]]
+type = "domain"
+value = "old.corp.example"
+# SG010: swallowed whole by the out_of_scope *.corp.example entry below, so
+#        it can never return in-scope.
+
+[[in_scope]]
+type = "domain"
+value = "dup.broken.example"
+
+[[in_scope]]
+type = "domain"
+value = "dup.broken.example"
+# SG007: the same entry twice.
+
+[[in_scope]]
+type = "domain"
+value = "both.broken.example"
+# SG008: also listed out_of_scope below.
+
+[[out_of_scope]]
+type = "wildcard"
+value = "*.corp.example"
+# SG004 again: corp.example is not excluded, only its subdomains.
+
+[[out_of_scope]]
+type = "domain"
+value = "both.broken.example"
+# SG008: contradicts the in_scope entry of the same value.
+
+[[out_of_scope]]
+type = "ip"
+value = "192.0.2.50"
+# SG005: a carve-out inside the in-scope 192.0.2.0/24 netblock. Reported so
+#        you can confirm the precedence that makes it work.
+
+[[out_of_scope]]
+type = "domain"
+value = "unrelated.other.example"
+# SG002: no in_scope entry overlaps it, and unlisted_is = "out" already makes
+#        everything unlisted out of scope, so this entry enforces nothing.

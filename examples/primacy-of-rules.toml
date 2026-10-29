@@ -1,0 +1,119 @@
+# ---------------------------------------------------------------------------
+# Example scope file: a primacy-of-rules programme.
+#
+# "Primacy of rules" means the asset table is the authority. If an asset is
+# not listed, you are not authorised to test it -- hence unlisted_is = "out".
+# Most platform-hosted programmes with an explicit asset table work this way.
+#
+# Every name here uses the .example TLD (reserved by RFC 6761) and the
+# documentation address ranges from RFC 5737 and RFC 3849, so nothing in this
+# file can resolve to a real host. That is deliberate: an example scope file
+# containing a live domain is a loaded gun.
+#
+# This describes a fictional payments platform. It is not a copy of any real
+# programme's policy.
+# ---------------------------------------------------------------------------
+
+[program]
+name = "Meridian Pay"
+platform = "self-hosted"
+policy_url = "https://meridianpay.example/security/disclosure-policy"
+last_verified = 2026-10-29
+notes = "Asset table read in full; the netblock is from the published ranges page."
+
+[rules]
+exclusions_win = true
+unlisted_is = "out"
+
+# ---------------------------------------------------------------------------
+# In scope
+# ---------------------------------------------------------------------------
+
+[[in_scope]]
+type = "domain"
+value = "meridianpay.example"
+notes = "The marketing site. Listed separately because the wildcard below does not cover the apex."
+
+[[in_scope]]
+type = "wildcard"
+value = "*.meridianpay.example"
+notes = "All production subdomains."
+
+[[in_scope]]
+type = "wildcard"
+value = "*.api.meridianpay.example"
+max_severity = "critical"
+notes = "The public API estate. Redundant against *.meridianpay.example, but kept because it carries a severity ceiling of its own."
+
+[[in_scope]]
+type = "domain"
+value = "checkout.meridianpay.example"
+max_severity = "critical"
+notes = "Hosted checkout. Redundant against the wildcard, and kept for the severity ceiling. Deliberately not written as https://checkout.meridianpay.example: the wildcard above already covers this host on every scheme, so pinning a scheme here would read like a restriction without being one. The plaintext listener is excluded explicitly below instead."
+
+[[in_scope]]
+type = "cidr"
+value = "203.0.113.0/24"
+notes = "Published edge netblock. Only decides IP targets -- scope-guard never resolves a hostname into this range."
+
+[[in_scope]]
+type = "cidr"
+value = "2001:db8:bf::/48"
+notes = "IPv6 allocation for the same edge."
+
+[[in_scope]]
+type = "android-package"
+value = "example.meridianpay.wallet"
+max_severity = "high"
+
+[[in_scope]]
+type = "ios-bundle"
+value = "example.meridianpay.wallet"
+max_severity = "high"
+
+[[in_scope]]
+type = "repo"
+value = "git.meridianpay.example/platform/checkout-sdk-js"
+max_severity = "medium"
+notes = "Source only. Findings must be reproducible from the published source; the build infrastructure is not in scope."
+
+# ---------------------------------------------------------------------------
+# Out of scope
+# ---------------------------------------------------------------------------
+# exclusions_win = true, so every entry below beats any inclusion above it,
+# however general the exclusion and however specific the inclusion.
+
+[[out_of_scope]]
+type = "wildcard"
+value = "*.sandbox.meridianpay.example"
+notes = "Shared pre-production. Data belongs to other integrators, so there is no authorisation to touch it."
+
+[[out_of_scope]]
+type = "domain"
+value = "sandbox.meridianpay.example"
+notes = "The apex of the excluded wildcard. Without this entry it would fall back through to the in-scope *.meridianpay.example wildcard."
+
+[[out_of_scope]]
+type = "domain"
+value = "status.meridianpay.example"
+notes = "Third-party status page; not the programme's asset to authorise."
+
+[[out_of_scope]]
+type = "path"
+value = "meridianpay.example/legal"
+notes = "Served from an external CMS. A prefix match on whole segments, so it covers /legal/terms but not /legalese."
+
+[[out_of_scope]]
+type = "ip"
+value = "203.0.113.1"
+notes = "Shared gateway inside the in-scope netblock. The carve-out holds because exclusions_win = true."
+
+[[out_of_scope]]
+type = "url"
+value = "http://checkout.meridianpay.example"
+notes = "The plaintext listener. This is how you say \"https only\": exclude the other scheme, rather than pinning https on an inclusion that a broader entry undercuts."
+
+[[out_of_scope]]
+type = "url"
+value = "https://checkout.meridianpay.example/webhooks"
+notes = "Live money movement. Read the implementation, do not exercise the endpoint."

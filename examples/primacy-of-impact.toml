@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# Example scope file: a primacy-of-impact programme.
+#
+# "Primacy of impact" means the programme cares about demonstrable impact on
+# the organisation rather than about an exhaustive asset list. An asset that
+# is not listed is not automatically forbidden -- it is a question. So
+# unlisted_is = "unknown", and scope-guard returns exit code 2 for anything
+# the file does not speak to, which is a prompt to ask rather than a licence
+# to proceed.
+#
+# Note what this changes about exclusions: here an out_of_scope entry is the
+# only way to turn an "unknown" into a definite "out-of-scope", so an
+# exclusion that no inclusion overlaps is doing real work. That is why lint's
+# SG002 (dead exclusion) does not fire on files like this one.
+#
+# Reserved names only (.example, RFC 5737, RFC 3849). Fictional organisation;
+# not a copy of any real programme's policy.
+# ---------------------------------------------------------------------------
+
+[program]
+name = "Helios Research Collective"
+platform = "self-hosted"
+policy_url = "https://heliosresearch.example/.well-known/security.txt"
+last_verified = 2026-10-29
+notes = "Policy states 'any asset owned by the Collective'; the entries below are what has been confirmed in writing."
+
+[rules]
+exclusions_win = true
+unlisted_is = "unknown"
+
+# ---------------------------------------------------------------------------
+# In scope -- confirmed in writing
+# ---------------------------------------------------------------------------
+
+[[in_scope]]
+type = "domain"
+value = "heliosresearch.example"
+
+[[in_scope]]
+type = "wildcard"
+value = "*.heliosresearch.example"
+notes = "Confirmed by the programme as covering the whole estate."
+
+[[in_scope]]
+type = "domain"
+value = "grants.heliosresearch.example"
+max_severity = "critical"
+notes = "Holds applicant personal data; the programme asked for this to be called out explicitly. Written as a domain rather than as https://grants.heliosresearch.example, because the wildcard above already covers this host on every scheme and a pinned scheme here would restrict nothing."
+
+[[in_scope]]
+type = "cidr"
+value = "198.51.100.0/24"
+
+[[in_scope]]
+type = "cidr"
+value = "2001:db8:4f1::/48"
+
+[[in_scope]]
+type = "repo"
+value = "git.heliosresearch.example/core/telemetry-agent"
+max_severity = "high"
+
+# ---------------------------------------------------------------------------
+# Out of scope -- the carve-outs that make "unknown" into "no"
+# ---------------------------------------------------------------------------
+
+[[out_of_scope]]
+type = "wildcard"
+value = "*.ci.heliosresearch.example"
+notes = "Build infrastructure. Explicitly refused in writing."
+
+[[out_of_scope]]
+type = "domain"
+value = "ci.heliosresearch.example"
+notes = "The apex of the excluded wildcard needs its own entry."
+
+[[out_of_scope]]
+type = "domain"
+value = "mail.heliosresearch.example"
+notes = "Hosted mailbox provider; the Collective cannot authorise testing of it."
+
+[[out_of_scope]]
+type = "path"
+value = "heliosresearch.example/careers"
+notes = "Third-party applicant tracking system embedded under the Collective's domain."
+
+[[out_of_scope]]
+type = "ip"
+value = "198.51.100.254"
+notes = "Upstream router, not the Collective's equipment."
+
+[[out_of_scope]]
+type = "cidr"
+value = "192.0.2.0/24"
+notes = "A partner's netblock that appears in the Collective's DNS. No inclusion overlaps it, and under unlisted_is = \"unknown\" that is the point: this entry is what makes the answer a firm no."
