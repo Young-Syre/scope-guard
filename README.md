@@ -227,6 +227,11 @@ scope-guard check ::ffff:203.0.113.42 --scope examples/primacy-of-rules.toml   #
 scope-guard check ::ffff:cb00:712a    --scope examples/primacy-of-rules.toml   # the same address, the same verdict
 ```
 
+Because one target can carry an address in both families, specificity has to be
+comparable across them — see the scoring note under **How a verdict is
+reached**. Scoring the raw prefix length let an `::ffff:0:0/96` inclusion
+outrank an explicit `192.0.2.0/24` exclusion of the same address.
+
 A **hostname is never resolved to an address.** A `cidr` entry cannot decide a
 hostname target, and `scope-guard` says so in the verdict rather than letting
 you assume it was considered:
@@ -279,6 +284,16 @@ Applied in this order:
    * exact host > CIDR > wildcard; a deeper wildcard beats a shallower one; a
      tighter CIDR beats a looser one; an exact `ip` entry beats any CIDR
      containing it, including a `/32`.
+   * "tighter" means *covering fewer addresses*, not a longer prefix. Prefix
+     lengths are not comparable across families: `::ffff:0:0/96` covers the
+     whole IPv4 space, so it is scored level with `0.0.0.0/0` and below
+     `192.0.2.0/24`. A `/32` and a `/128` are equally precise — each names one
+     address.
+   * An in-scope verdict has to rest on something the target actually stated.
+     If every matching inclusion pins a scheme or a port the target left out,
+     the match was made by relaxing the entry's own constraint, and the verdict
+     is `unknown` with the fix named. A broader entry that covers the target as
+     written still authorises it, and is the entry reported.
 4. **Equal specificity, opposite verdicts** (only reachable with
    `exclusions_win = false`). `unknown`, with both entries named. The tool does
    not guess — that is the question to put to the programme.
@@ -426,7 +441,7 @@ it does not do.
 python -m unittest discover -s tests -t . -v
 ```
 
-268 tests, standard library `unittest`, no network access. They cover every
+280 tests, standard library `unittest`, no network access. They cover every
 matching rule above including the adversarial cases (`example.com.evil.net`,
 `notexample.com`, `/apifoo`, `/api/../admin`, `/api/%2e%2e/admin`, `%2F`,
 IPv4-mapped IPv6, trailing dots, uppercase, punycode), precedence and
