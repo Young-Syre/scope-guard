@@ -441,7 +441,7 @@ it does not do.
 python -m unittest discover -s tests -t . -v
 ```
 
-280 tests, standard library `unittest`, no network access. They cover every
+286 tests, standard library `unittest`, no network access. They cover every
 matching rule above including the adversarial cases (`example.com.evil.net`,
 `notexample.com`, `/apifoo`, `/api/../admin`, `/api/%2e%2e/admin`, `%2F`,
 IPv4-mapped IPv6, trailing dots, uppercase, punycode), precedence and
